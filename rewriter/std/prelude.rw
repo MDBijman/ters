@@ -48,6 +48,12 @@ intersperse[v]: [h|t] -> .intersperse_acc[v] (t, [h]);
 intersperse_acc[v]: ([], acc) -> .reverse acc;
 intersperse_acc[v]: ([h|t], acc) -> .intersperse_acc[v] (t, [h|[v|acc]]);
 
+# Enumerate - Numbers the items in a list starting at 0
+# [t] -> [(num, t)]
+enumerate: [] -> [];
+enumerate: [h|t] -> !enumerate_impl[0] [h|t];
+enumerate_impl[idx]: [h|t] -> new_idx := !add (idx, 1) in [(idx, h) | !enumerate[new_idx] t];
+
 # Flattens lists
 # Empty list is flat
 flatten_some: [] -> [];
