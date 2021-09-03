@@ -1,5 +1,5 @@
 [package]
-name = "rewriter"
+name = "ters"
 version = "0.1.0"
 authors = ["Matthijs Bijman <matthijs@bijman.org>"]
 edition = "2018"
@@ -14,14 +14,14 @@ clap = "2.33.3"
 nom = "6.0.0"
 itertools = "0.9.0"
 
-[dependencies.terms_format]
-path = "../terms_format"
+[dependencies.aterms]
+path = "../aterms"
 version = "0.1.0"
 
 [lib]
-name = "rewriter"
+name = "terslib"
 path = "src/lib.rs"
 
 [[bin]]
-name = "rewriterx"
+name = "ters"
 path = "src/bin.rs"
