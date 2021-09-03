@@ -11,7 +11,7 @@ use nom::{
 };
 use std::fs;
 use crate::parser::rwfile::*;
-use terms_format;
+use aterms;
 
 
 fn ws<'a, O, E: ParseError<&'a str>, F: Parser<&'a str, O, E>>(f: F) -> impl Parser<&'a str, O, E> {
@@ -113,17 +113,17 @@ fn parse_variable_match(input: &str) -> IResult<&str, Match> {
 }
 
 fn parse_string_match(input: &str) -> IResult<&str, Match> {
-    let (input, res) = terms_format::parse_string(input)?;
+    let (input, res) = aterms::parse_string(input)?;
     match res {
-        terms_format::Term::STerm(terms_format::STerm { value: n }, _) => Ok((input, Match::StringMatcher(StringMatcher { value: n.to_string() }))),
+        aterms::Term::STerm(aterms::STerm { value: n }, _) => Ok((input, Match::StringMatcher(StringMatcher { value: n.to_string() }))),
         _ => panic!("Unexpected result from parsing string")
     }
 }
 
 fn parse_number_match(input: &str) -> IResult<&str, Match> {
-    let (input, res) = terms_format::parse_number(input)?;
+    let (input, res) = aterms::parse_number(input)?;
     match res {
-        terms_format::Term::NTerm(terms_format::NTerm { value: n }, _) => Ok((input, Match::NumberMatcher(NumberMatcher { value: n }))),
+        aterms::Term::NTerm(aterms::NTerm { value: n }, _) => Ok((input, Match::NumberMatcher(NumberMatcher { value: n }))),
         _ => panic!("Unexpected result from parsing number")
     }
 }
@@ -228,9 +228,9 @@ fn parse_value(input: &str) -> IResult<&str, Expr> {
 }
 
 fn parse_string(input: &str) -> IResult<&str, Expr> {
-    let (input, res) = terms_format::parse_string(input)?;
+    let (input, res) = aterms::parse_string(input)?;
     match res {
-        terms_format::Term::STerm(s, _) => 
+        aterms::Term::STerm(s, _) => 
             Ok((input, Expr::Text(Text { value: s.value }))),
         _ => panic!("Unexpected term type from parse_string")
     }

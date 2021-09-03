@@ -1,5 +1,5 @@
 use rewriter::{parse_rewrite_file, Rewriter};
-use terms_format::parse_term_from_string;
+use aterms::parse_term_from_string;
 
 
 #[test]

@@ -1,4 +1,4 @@
-extern crate terms_format;
+extern crate aterms;
 extern crate itertools;
 mod interp;
 mod parser;

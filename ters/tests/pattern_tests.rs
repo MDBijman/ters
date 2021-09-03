@@ -1,5 +1,5 @@
 use rewriter::{parse_rewrite_file, Rewriter};
-use terms_format::parse_term_from_string;
+use aterms::parse_term_from_string;
 
 fn run_e2e_test(rw_string: &str, in_term: &str, out_term: &str) {
     let r = rewriter::parse_rewrite_string(rw_string).unwrap();

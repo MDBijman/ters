@@ -1,4 +1,4 @@
-use terms_format as tf;
+use aterms as at;
 
 #[derive(Debug)]
 pub struct File {
@@ -42,33 +42,33 @@ pub enum Expr {
     Annotation(Annotation),
     AddAnnotation(Annotation),
     Let(Let),
-    SimpleTerm(tf::Term),
+    SimpleTerm(at::Term),
     This
 }
 
 impl Expr {
-    pub fn to_term(&self) -> Option<tf::Term> {
+    pub fn to_term(&self) -> Option<at::Term> {
         match &self {
             Expr::SimpleTerm(t) => Some(t.clone()),
             Expr::Tuple(t) => {
-                let mut sub_t: Vec<tf::Term> = vec![];
+                let mut sub_t: Vec<at::Term> = vec![];
                 for elem in &t.values {
                     sub_t.push(elem.to_term()?);
                 }
-                Some(tf::Term::new_tuple_term(sub_t))
+                Some(at::Term::new_tuple_term(sub_t))
             },
             Expr::List(t) => {
-                let mut sub_t: Vec<tf::Term> = vec![];
+                let mut sub_t: Vec<at::Term> = vec![];
                 for elem in &t.values {
                     sub_t.push(elem.to_term()?);
                 }
-                Some(tf::Term::new_list_term(sub_t))
+                Some(at::Term::new_list_term(sub_t))
             },
             Expr::Number(t) => {
-                Some(tf::Term::new_number_term(t.value))
+                Some(at::Term::new_number_term(t.value))
             },
             Expr::Text(t) => {
-                Some(tf::Term::new_string_term(&t.value))
+                Some(at::Term::new_string_term(&t.value))
             },
             _ => None
         }
