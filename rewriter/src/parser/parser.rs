@@ -396,12 +396,12 @@ pub fn parse_rw_string(input: &str) -> Result<File, String> {
     match many0(ws(parse_function))(input) {
         Ok((input, f)) => {
             if input.len() > 0 {
-                panic!(format!("Input left after parsing:\n{}", input));
+                panic!("Input left after parsing:\n{}", input);
             }
 
             Ok(File { functions: f, filename: None })
         },
-        Err(e) => panic!(format!("Something went wrong: {}", e))
+        Err(e) => panic!("Something went wrong: {}", e)
     }
 }
 

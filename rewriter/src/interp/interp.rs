@@ -1,12 +1,29 @@
 use terms_format as tf;
 use crate::parser::rwfile::*;
-use std::collections::HashMap;
+use std::{collections::HashMap, path};
 use crate::parser::parser::parse_rw_string;
 use std::fmt;
 
+#[cfg(feature = "bench-instrumentation")]
+pub struct BenchmarkMetrics {
+    counters: HashMap<String, u64>
+}
+
+#[cfg(feature = "bench-instrumentation")]
+impl BenchmarkMetrics {
+    pub fn new() -> BenchmarkMetrics {
+        BenchmarkMetrics {
+            counters: HashMap::new()
+        }
+    }
+}
+
 pub struct Rewriter {
     rules: File,
-    newname_counts: HashMap<String, u64>
+    newname_counts: HashMap<String, u64>,
+
+    #[cfg(feature = "bench-instrumentation")]
+    metrics: BenchmarkMetrics
 }
 
 #[derive(Clone, Debug)]
@@ -237,20 +254,53 @@ fn check_and_bind_match(m: &Match, t: &tf::Term) -> Option<Context> {
 
 impl Rewriter {
     pub fn new(f: File) -> Rewriter {
-        Rewriter { rules: f, newname_counts: HashMap::new() }
+        #[cfg(feature = "bench-instrumentation")]
+        return Rewriter {
+            rules: f,
+            newname_counts: HashMap::new(),
+            metrics: BenchmarkMetrics::new()
+        };
+
+        #[cfg(not(feature = "bench-instrumentation"))]
+        return Rewriter {
+            rules: f,
+            newname_counts: HashMap::new()
+        };
     }
 
     pub fn new_with_prelude(f: File) -> Rewriter {
         let prelude_code = include_str!("../../std/prelude.rw");
         let prelude = parse_rw_string(&prelude_code).unwrap();
-        Rewriter { rules: File::merge(prelude, f), newname_counts: HashMap::new() }
+        Rewriter::new(File::merge(prelude, f))
     }
 
     pub fn rewrite(&mut self, t: tf::Term) -> tf::Term {
         let result = self.interp_function(
-            Context::new(),
+            &Context::new(),
             &FRef::from(&String::from("main"), &Vec::new(), FunctionReferenceType::Force),
             t);
+
+
+        #[cfg(feature = "bench-instrumentation")] {
+            use std::fs;
+            use std::path::Path;
+            use std::io::Write;
+            let rw_path_str = self.rules.filename.clone().unwrap();
+            let rw_path = Path::new(&rw_path_str);
+            let bench_path = Path::new("./snippets/bench/").join(rw_path.file_name().unwrap()).with_extension("json");
+            let mut o = fs::File::create(bench_path).unwrap();
+
+            o.write("{\n".as_bytes()).unwrap();
+            let mut res = self.metrics.counters.iter().collect::<Vec<_>>();
+            res.sort_by(|x,y| x.0.cmp(&y.0));
+            let mut iter = res.iter();
+            let (k, v) = iter.next().unwrap();
+            o.write(format!("\t\"{}\": {}", k, v).as_bytes()).unwrap();
+            for (k, v) in iter {
+                o.write(format!(",\n\t\"{}\": {}", k, v).as_bytes()).unwrap();
+            }
+            o.write("\n}\n".as_bytes()).unwrap();
+        }
 
         match result {
             Err(f) => {
@@ -295,7 +345,9 @@ impl Rewriter {
         ["add", "mul", "div", "min", "max", "subterms", "with_subterms", "debug", "debug_context", "fail", "gen_name", "gen_num", "get_num", "reset_num", "eq", "concat_str", "to_str"].contains(&name)
     }
 
-    pub fn try_run_builtin_function(&mut self, c: Context, function: &FRef, t: tf::Term) -> Option<Expr> {
+    pub fn try_run_builtin_function(&mut self, c: &Context, function: &FRef, t: &tf::Term) -> Option<Expr> {
+        self.bench_increment_count("fn:try_run_builtin_function");
+
         let meta = &function.meta;
         match (function.name.as_str(), t) {
             ("add", tf::Term::TTerm(rt, _)) if rt.terms.len() == 2 => {
@@ -329,7 +381,7 @@ impl Rewriter {
                 }
             },
             ("subterms", tf::Term::RTerm(rt, _)) if meta.len() == 0 => {
-                Some(Rewriter::term_to_expr(&tf::Term::new_list_term(rt.terms)))
+                Some(Rewriter::term_to_expr(&tf::Term::new_list_term(rt.terms.clone())))
             },
             ("with_subterms", tf::Term::TTerm(rt, _)) if meta.len() == 0 => {
                 match (&rt.terms[0], &rt.terms[1]) {
@@ -371,12 +423,12 @@ impl Rewriter {
             ("reset_num", tf::Term::STerm(st, a)) => {
                 self.reset_newname_count(&st.value);
 
-                Some(Rewriter::term_to_expr(&tf::Term::STerm(st, a)))
+                Some(Rewriter::term_to_expr(&tf::Term::STerm(st.clone(), a.clone())))
             },
             ("concat_str", tf::Term::LTerm(lt, _)) => {
                 let mut out: String = String::new();
 
-                for item in lt.terms {
+                for item in lt.terms.iter() {
                     match item {
                         tf::Term::STerm(s, _) => out.push_str(s.value.as_str()),
                         _ => return None
@@ -402,10 +454,13 @@ impl Rewriter {
         }
     }
 
-    fn reduce(&mut self, c: Context, e: &Expr, t: tf::Term) -> Result<Option<Expr>, Failure> {
+    fn reduce(&mut self, c: &Context, e: &Expr, t: &tf::Term) -> Result<Option<Expr>, Failure> {
+        self.bench_increment_count("fn:reduce");
+
         Ok(match e {
             Expr::FRef(f) => {
-                let new_meta: Vec<Expr> = f.meta.iter().map(|e| self.reduce(c.clone(), e, t.clone()).unwrap().unwrap()).collect();
+                self.bench_increment_count("fn:reduce:fref");
+                let new_meta: Vec<Expr> = f.meta.iter().map(|e| self.reduce(c, e, t).unwrap().unwrap()).collect();
 
                 match c.bound_functions.get(&f.name) {
                     Some(f) => Some(Expr::FRef(FRef {
@@ -421,6 +476,7 @@ impl Rewriter {
                 }
             },
             Expr::Tuple(tup) => {
+                self.bench_increment_count("fn:reduce:tuple");
                 let mut res: Vec<tf::Term> = vec![];
                 for e in &tup.values {
                     match e {
@@ -440,7 +496,7 @@ impl Rewriter {
 
                         // Not variadic
                         _ => {
-                            let value = self.reduce(c.clone(), &e, t.clone())?;
+                            let value = self.reduce(c, &e, t)?;
                             if value.is_none() {
                                 return Ok(None)
                             }
@@ -453,7 +509,8 @@ impl Rewriter {
                 Some(Expr::SimpleTerm(tf::Term::new_tuple_term(res)))
             },
             Expr::Invoke(inv) => {
-                let arg = match self.reduce(c.clone(), &inv.arg, t.clone())? {
+                self.bench_increment_count("fn:reduce:invoke");
+                let arg = match self.reduce(c, &inv.arg, t)? {
                     Some(t) => t.to_term().unwrap(),
                     None => return Ok(None)
                 };
@@ -461,6 +518,7 @@ impl Rewriter {
                 return self.interp_function(c, &inv.name, arg)
             },
             Expr::Ref(r) => {
+                self.bench_increment_count("fn:reduce:ref");
                 let res = &c.bound_variables.get(&r.name);
                 if res.is_none() {
                     return Err(Failure {
@@ -477,32 +535,36 @@ impl Rewriter {
             },
             Expr::Number(n) => Some(Rewriter::term_to_expr(&tf::Term::new_number_term(n.value))),
             Expr::Op(Op::Choice(cond, th, el)) => {
-                match self.reduce(c.clone(), &*cond, t.clone())? {
-                    Some(res) => self.reduce(c.clone(), &*th, res.to_term().unwrap().clone())?,
-                    None => self.reduce(c.clone(), &*el, t.clone())?,
+                self.bench_increment_count("fn:reduce:choice");
+                match self.reduce(c, &*cond, t)? {
+                    Some(res) => self.reduce(c, &*th, &res.to_term().unwrap().clone())?,
+                    None => self.reduce(c, &*el, t)?,
                 }
             },
             Expr::Op(Op::Or(l, r)) => {
-                match self.reduce(c.clone(), &*l, t.clone())? {
+                self.bench_increment_count("fn:reduce:or");
+                match self.reduce(c, &*l, t)? {
                     Some(t) => Some(t),
                     None => self.reduce(c, &*r, t)?
                 }
             },
             Expr::Op(Op::And(l, r)) => {
-                let lr = match self.reduce(c.clone(), &*l, t.clone())? {
+                self.bench_increment_count("fn:reduce:and");
+                let lr = match self.reduce(c, &*l, t)? {
                     Some(t) => t.to_term().unwrap(),
                     None => return Ok(None)
                 };
 
-                self.reduce(c.clone(), &*r, lr)?
+                self.reduce(c, &*r, &lr)?
             },
             Expr::Term(et) => {
-                let head = self.reduce(c.clone(), &et.constructor, t.clone())?;
+                self.bench_increment_count("fn:reduce:term");
+                let head = self.reduce(c, &et.constructor, t)?;
 
                 if head.is_none() { return Ok(None); }
 
                 // Interpret subterms as tuple
-                let terms = match self.reduce(c.clone(), &Expr::Tuple(Tuple { values: et.terms.clone() }), t.clone())? {
+                let terms = match self.reduce(c, &Expr::Tuple(Tuple { values: et.terms.clone() }), t)? {
                     Some(Expr::SimpleTerm(tf::Term::TTerm(ts, _))) => {
                         ts.terms
                     },
@@ -517,13 +579,14 @@ impl Rewriter {
             },
             Expr::This => Some(Rewriter::term_to_expr(&t)),
             Expr::AddAnnotation(a) => {
-                let mut inner_term = match self.reduce(c.clone(), &*a.inner, t.clone())? {
+                self.bench_increment_count("fn:reduce:addannotation");
+                let mut inner_term = match self.reduce(c, &*a.inner, t)? {
                     Some(t) => t.to_term().unwrap(),
                     None => return Ok(None)
                 };
 
                 for subt in a.annotations.iter() {
-                    let r = match self.reduce(c.clone(), &subt, t.clone())? {
+                    let r = match self.reduce(c, &subt, t)? {
                         Some(t) => t.to_term().unwrap(),
                         None => return Ok(None)
                     };
@@ -533,7 +596,8 @@ impl Rewriter {
                 Some(Rewriter::term_to_expr(&inner_term))
             },
             Expr::Annotation(a) => {
-                let mut inner_term = match self.reduce(c.clone(), &*a.inner, t.clone())? {
+                self.bench_increment_count("fn:reduce:annotation");
+                let mut inner_term = match self.reduce(c, &*a.inner, t)? {
                     Some(t) => t.to_term().unwrap(),
                     None => return Ok(None)
                 };
@@ -554,7 +618,7 @@ impl Rewriter {
                             }
                         },
                         _ => {
-                            let r = match self.reduce(c.clone(), &subt, t.clone())? {
+                            let r = match self.reduce(c, &subt, t)? {
                                 Some(t) => t.to_term().unwrap(),
                                 None => return Ok(None)
                             };
@@ -570,9 +634,10 @@ impl Rewriter {
                 Some(Rewriter::term_to_expr(&tf::Term::new_string_term(t.value.as_str())))
             },
             Expr::List(l) => {
+                self.bench_increment_count("fn:reduce:list");
                 let mut res = tf::LTerm { terms: Vec::new() };
                 for e in &l.values {
-                    let r = match self.reduce(c.clone(), &e, t.clone())? {
+                    let r = match self.reduce(c, &e, t)? {
                         Some(t) => t.to_term().unwrap(),
                         None => return Ok(None)
                     };
@@ -582,7 +647,8 @@ impl Rewriter {
                 Some(Rewriter::term_to_expr(&tf::Term::LTerm(res, tf::Annotations::empty())))
             },
             Expr::Let(l) => {
-                let rhs_res = match self.reduce(c.clone(), &*l.rhs, t.clone())? {
+                self.bench_increment_count("fn:reduce:let");
+                let rhs_res = match self.reduce(c, &*l.rhs, t)? {
                     Some(t) => t.to_term().unwrap(),
                     None => return Ok(None)
                 };
@@ -591,18 +657,19 @@ impl Rewriter {
                     Some(bindings) => {
                         let mut new_c = c.clone();
                         new_c.merge(bindings);
-                        self.reduce(new_c, &*l.body, t)?
+                        self.reduce(&new_c, &*l.body, t)?
                     },
                     None => None
                 }
             },
             Expr::ListCons(l) => {
-                let head_res = match self.reduce(c.clone(), &*l.head, t.clone())? {
+                self.bench_increment_count("fn:reduce:listcons");
+                let head_res = match self.reduce(c, &*l.head, t)? {
                     Some(t) => t.to_term().unwrap(),
                     None => return Ok(None)
                 };
 
-                match self.reduce(c.clone(), &*l.tail, t.clone())? {
+                match self.reduce(c, &*l.tail, t)? {
                     Some(t) => match t.to_term() {
                         Some(tf::Term::LTerm(tail_res, a)) => {
                             let mut res = vec![head_res];
@@ -638,7 +705,9 @@ impl Rewriter {
         }
     }
 
-    fn try_interp_function_instance(&mut self, c: Context, f: &Function, meta: &Vec<Expr>, t: tf::Term) -> Result<Option<Expr>, Failure> {
+    fn try_interp_function_instance(&mut self, c: &Context, f: &Function, meta: &Vec<Expr>, t: &tf::Term) -> Result<Option<Expr>, Failure> {
+        self.bench_increment_count("fn:try_interp_function_instance");
+
         // Check matcher and bind variables to terms
         let maybe_bindings = check_and_bind_match(&f.matcher, &t);
         if maybe_bindings.is_none() { return Ok(None) }
@@ -652,7 +721,7 @@ impl Rewriter {
         for (p, a) in f.meta.iter().zip(meta.iter()) {
             match (p, a) {
                 (Expr::FRef(param), arg@Expr::FRef(_)) => { 
-                    let resolved_arg = self.reduce(c.clone(), arg, t.clone())?;
+                    let resolved_arg = self.reduce(c, arg, t)?;
                     match resolved_arg {
                         Some(Expr::FRef(f)) => {
                             new_context.bound_functions.insert(param.name.clone(), f);
@@ -663,19 +732,20 @@ impl Rewriter {
                 (Expr::Ref(f), e)  => {
                     new_context.bound_variables.insert(
                         f.name.clone(),
-                        self.reduce(c.clone(), e, t.clone())?.unwrap().to_term().unwrap());
+                        self.reduce(c, e, t)?.unwrap().to_term().unwrap());
                 },
                 _ => panic!("Unsupported meta expression")
             }
         }
 
-        self.reduce(new_context, &f.body, t)
+        self.reduce(&new_context, &f.body, t)
     }
 
-    pub fn interp_function(&mut self, c: Context, function: &FRef, t: tf::Term) -> Result<Option<Expr>, Failure> {
+    pub fn interp_function(&mut self, c: &Context, function: &FRef, t: tf::Term) -> Result<Option<Expr>, Failure> {
+        self.bench_increment_count("fn:interp_function");
         
         // Evaluate meta args
-        let new_meta: Vec<Expr> = function.meta.iter().map(|e| self.reduce(c.clone(), e, t.clone()).unwrap().unwrap()).collect();
+        let new_meta: Vec<Expr> = function.meta.iter().map(|e| self.reduce(c, e, &t).unwrap().unwrap()).collect();
 
         // Try to dereference dynamically bound function
         let derefed_function = match c.bound_functions.get(&function.name) {
@@ -686,6 +756,7 @@ impl Rewriter {
             None => { FRef { name: function.name.clone(), meta: new_meta, ref_type: function.ref_type } } 
         };
 
+        self.bench_increment_count(derefed_function.name.as_str());
 
         // Find user-defined functions
         let fns: Vec<Function> = self.rules.functions.iter()
@@ -699,7 +770,7 @@ impl Rewriter {
 
         // Try user-defined function
         for f in fns {
-            match self.try_interp_function_instance(c.clone(), &f, &derefed_function.meta, t.clone()) {
+            match self.try_interp_function_instance(c, &f, &derefed_function.meta, &t) {
                 Err(mut fail) => {
                     fail.with_call(f.name);
                     return Err(fail);
@@ -712,7 +783,7 @@ impl Rewriter {
         }
 
         // Try built-in function
-       match self.try_run_builtin_function(c.clone(), function, t.clone()) {
+       match self.try_run_builtin_function(c, function, &t) {
            Some(t) => { return Ok(Some(t)); },
            None => {}
        }
@@ -726,6 +797,16 @@ impl Rewriter {
             })
         } else {
             Ok(None)
+        }
+    }
+
+    #[allow(dead_code)]
+    fn bench_increment_count(&mut self, _name: &str) {
+        #[cfg(feature = "bench-instrumentation")] {
+            match self.metrics.counters.get_mut(_name) {
+                Some(c) => *c += 1,
+                None => { self.metrics.counters.insert(String::from(_name), 1); },
+            };
         }
     }
 }
