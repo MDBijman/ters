@@ -1,8 +1,8 @@
-use rewriter::{parse_rewrite_file, Rewriter};
-use terms_format::parse_term_from_string;
+use ters::{parse_rewrite_file, Rewriter};
+use aterms::parse_term_from_string;
 
 fn run_e2e_test(rw_string: &str, in_term: &str, out_term: &str) {
-    let r = rewriter::parse_rewrite_string(rw_string).unwrap();
+    let r = ters::parse_rewrite_string(rw_string).unwrap();
     let mut rw = Rewriter::new_with_prelude(r);
     let input = parse_term_from_string(in_term).unwrap();
     let result = rw.rewrite(input);

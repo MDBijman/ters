@@ -19,7 +19,7 @@ path = "../aterms"
 version = "0.1.0"
 
 [lib]
-name = "terslib"
+name = "ters"
 path = "src/lib.rs"
 
 [[bin]]

@@ -190,25 +190,33 @@ fn check_and_bind_match(m: &Match, t: &at::Term) -> Option<Context> {
             let mut bindings: Context = Context::new();
             match &lm.head {
                 None => {
+                    // Match empty list against empty pattern -> success
                     if lt.terms.len() == 0 {
                         Some(bindings)
-                    } else {
+                    }
+                    // Match non-empty list against empty pattern -> fail
+                    else {
                         None
                     }
                 },
                 Some(head_matcher) => {
+                    // Match empty list against non-empty pattern
                     if lt.terms.len() == 0 { return None; };
                     let sub_bindings = check_and_bind_match(&*head_matcher, &lt.terms[0])?;
                     bindings.merge(sub_bindings);
 
                     match &lm.tail {
                         None => {
+                            // Match single element list against single element pattern -> success
                             if lt.terms.len() == 1 {
                                 Some(bindings)
-                            } else {
+                            } 
+                            // Match multiple element list against single element pattern -> fail
+                            else {
                                 None
                             }
                         },
+                        // Match multiple element list against multiple element pattern -> success
                         Some(tail_matcher) => {
                             let sub_bindings = check_and_bind_match(&*tail_matcher, &at::Term::new_list_term(lt.terms[1..].to_vec()))?;
                             bindings.merge(sub_bindings);
@@ -227,7 +235,7 @@ fn check_and_bind_match(m: &Match, t: &at::Term) -> Option<Context> {
                 match m {
                     Match::VariadicElementMatcher(v) => {
                         bindings.bind_variable(v.name.as_str(), at::Term::new_list_term(tt.terms[i..].to_vec()));
-                        return Some(bindings);
+                        break;
                     },
                     _ => {
                         if i as i64 > (tt.terms.len() as i64) - 1 { return None };
@@ -243,6 +251,7 @@ fn check_and_bind_match(m: &Match, t: &at::Term) -> Option<Context> {
                 None => return None,
                 Some(b) => bindings.merge(b)
             }
+
 
             Some(bindings)
         },

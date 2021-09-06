@@ -3,8 +3,8 @@ topdown[.f]: (..ts){..a} -> new_ts := .topdown[.f] ts in (..new_ts,){..a};
 topdown[.f]: l -> .is_list l > new_l := .f l in new_elems := .map[.topdown[.f]] new_l in new_elems;
 topdown[.f]: term -> .f term;
 
-bottomup[.f]: ?con(..sub){..a}    -> new_sub   := .map[.bottomup[.f]] sub in .f ?con(..new_sub){..a};
-bottomup[.f]: (..ts){..a}         -> new_ts    := .map[.bottomup[.f]] ts  in .f (..new_ts,){..a};
+bottomup[.f]: ?con(..sub){..a}    -> new_sub  := .map[.bottomup[.f]] sub in .f ?con(..new_sub){..a};
+bottomup[.f]: (..ts){..a}         -> new_ts   := .map[.bottomup[.f]] ts  in .f (..new_ts,){..a};
 bottomup[.f]: l -> .is_list l > new_elems := .map[.bottomup[.f]] l   in .f new_elems;
 bottomup[.f]: t -> .f t;
 
