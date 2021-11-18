@@ -20,6 +20,16 @@ fn test_term_match() {
 }
 
 #[test]
+fn test_term_match_multiple() {
+    run_e2e_test(
+        "main: f -> !match f;
+        match: Test(a) -> a;
+        match: Test(a, b) -> (a, b);",
+        "Test(1, 2)",
+        "(1, 2)");
+}
+
+#[test]
 fn test_term_name_variable() {
     run_e2e_test(
         "main: f -> .match f;

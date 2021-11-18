@@ -146,6 +146,7 @@ fn check_and_bind_match(m: &Match, t: &at::Term) -> Option<Context> {
             bindings.merge(head_binding.unwrap());
 
             let mut i = 0;
+            let mut matched_variadic = false;
             for m in tm.terms.iter() {
                 match m {
                     Match::VariadicElementMatcher(v) => {
@@ -153,6 +154,7 @@ fn check_and_bind_match(m: &Match, t: &at::Term) -> Option<Context> {
                             v.name.clone(),
                             at::Term::new_list_term(rec_term.terms[i..].to_vec()),
                         );
+                        matched_variadic = true;
                         break;
                     }
                     _ => {
@@ -165,6 +167,10 @@ fn check_and_bind_match(m: &Match, t: &at::Term) -> Option<Context> {
                 }
 
                 i += 1;
+            }
+
+            if !matched_variadic && i < rec_term.terms.len() {
+                return None;
             }
 
             match check_and_bind_annotations(&tm.annotations, term_annot.clone()) {
