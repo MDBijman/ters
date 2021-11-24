@@ -14,10 +14,10 @@ fn main() {
         .version("0.1")
         .author("Matthijs Bijman <matthijs@bijman.org>")
         .about("Term rewriter for language implementation")
-        .arg(Arg::with_name("rewriter_file")
+        .arg(Arg::with_name("ters_file")
             .short("r")
-            .long("rewriter")
-            .value_name("RW_FILE")
+            .long("ters")
+            .value_name("TERS_FILE")
             .help("The input .rw file")
             .required(true))
         .arg(Arg::with_name("input_file")
@@ -34,7 +34,7 @@ fn main() {
             .required(true))
         .get_matches();
 
-    let rw_name   = matches.value_of("rewriter_file").unwrap();
+    let rw_name   = matches.value_of("ters_file").unwrap();
     let term_name = matches.value_of("input_file").unwrap();
     let out_name  = matches.value_of("output_file").unwrap();
 

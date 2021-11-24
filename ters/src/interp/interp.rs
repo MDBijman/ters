@@ -2,7 +2,7 @@ use crate::parser::parser::parse_rw_string;
 use crate::parser::rwfile::*;
 use aterms as at;
 use std::fmt;
-use std::{collections::HashMap, path};
+use std::{collections::HashMap};
 
 #[cfg(feature = "bench-instrumentation")]
 pub struct BenchmarkMetrics {
@@ -18,6 +18,7 @@ impl BenchmarkMetrics {
     }
 }
 
+#[derive(Clone)]
 pub struct Rewriter {
     rules: File,
     newname_counts: HashMap<String, u64>,
@@ -310,10 +311,14 @@ impl Rewriter {
     }
 
     pub fn rewrite(&mut self, t: at::Term) -> at::Term {
+        self.rewrite_with_rule(t, "main")
+    }
+
+    pub fn rewrite_with_rule(&mut self, t: at::Term, f: &str) -> at::Term {
         let result = self.interp_function(
             &Context::new(),
             &FRef::from(
-                &String::from("main"),
+                &String::from(f),
                 &Vec::new(),
                 FunctionReferenceType::Force,
             ),

@@ -1,24 +1,25 @@
 extern crate nom;
-use nom::{
-    IResult, Parser, error::ParseError,
-    character::complete::{ char, multispace0, none_of, anychar },
-    bytes::complete::{ tag, take_while1, take },
-    combinator::{ map, map_opt, opt, map_res, verify },
-    sequence::{ delimited, preceded, separated_pair },
-    multi::{ separated_list0, fold_many0 },
-    branch::alt,
-    number::complete::double,
-};
-use std::fs;
-use std::fmt;
-use std::mem;
-use std::hash::{Hash, Hasher};
-use indenter::{indented, Format};
 use core::fmt::Write;
+use indenter::{indented, Format};
+use nom::{
+    branch::alt,
+    bytes::complete::{tag, take, take_while1},
+    character::complete::{anychar, char, multispace0, none_of},
+    combinator::{map, map_opt, map_res, opt, verify},
+    error::{ParseError, VerboseError},
+    multi::{fold_many0, separated_list0},
+    number::complete::double,
+    sequence::{delimited, preceded, separated_pair},
+    IResult, Parser,
+};
+use std::fmt;
+use std::fs;
+use std::hash::{Hash, Hasher};
+use std::mem;
 
 #[derive(Debug, Clone, Hash)]
 pub struct Annotations {
-    pub elems: Vec<Term>
+    pub elems: Vec<Term>,
 }
 
 impl Annotations {
@@ -41,7 +42,7 @@ impl PartialEq for Annotations {
             if !other.elems.contains(&elem) {
                 return false;
             }
-        };
+        }
 
         true
     }
@@ -59,37 +60,57 @@ pub enum Term {
 impl PartialEq for Term {
     fn eq(&self, other: &Term) -> bool {
         match (self, other) {
-            (Term::RTerm(lr, la), Term::RTerm(rr, ra)) => {
-                lr == rr && la == ra
-            },
-            (Term::STerm(lr, la), Term::STerm(rr, ra)) => {
-                lr == rr && la == ra
-            },
-            (Term::NTerm(lr, la), Term::NTerm(rr, ra)) => {
-                lr == rr && la == ra
-            },
-            (Term::TTerm(lr, la), Term::TTerm(rr, ra)) => {
-                lr == rr && la == ra
-            },
-            (Term::LTerm(lr, la), Term::LTerm(rr, ra)) => {
-                lr == rr && la == ra
-            },
-            (_, _) => false
+            (Term::RTerm(lr, la), Term::RTerm(rr, ra)) => lr == rr && la == ra,
+            (Term::STerm(lr, la), Term::STerm(rr, ra)) => lr == rr && la == ra,
+            (Term::NTerm(lr, la), Term::NTerm(rr, ra)) => lr == rr && la == ra,
+            (Term::TTerm(lr, la), Term::TTerm(rr, ra)) => lr == rr && la == ra,
+            (Term::LTerm(lr, la), Term::LTerm(rr, ra)) => lr == rr && la == ra,
+            (_, _) => false,
         }
     }
 }
 
 impl Term {
     pub fn new_rec_term(n: &str, t: Vec<Term>) -> Term {
-        Term::RTerm(RTerm { constructor: n.to_string(), terms: t }, Annotations::empty())
+        Term::RTerm(
+            RTerm {
+                constructor: n.to_string(),
+                terms: t,
+            },
+            Annotations::empty(),
+        )
     }
 
     pub fn new_anot_rec_term(n: &str, t: Vec<Term>, a: Vec<Term>) -> Term {
-        Term::RTerm(RTerm { constructor: n.to_string(), terms: t }, Annotations::from(a))
+        Term::RTerm(
+            RTerm {
+                constructor: n.to_string(),
+                terms: t,
+            },
+            Annotations::from(a),
+        )
+    }
+
+    pub fn new_anot_string_term(n: &str, anots: Vec<Term>) -> Term {
+        Term::STerm(
+            STerm {
+                value: n.to_string(),
+            },
+            Annotations::from(anots),
+        )
     }
 
     pub fn new_string_term(n: &str) -> Term {
-        Term::STerm(STerm { value: n.to_string() }, Annotations::empty())
+        Term::STerm(
+            STerm {
+                value: n.to_string(),
+            },
+            Annotations::empty(),
+        )
+    }
+
+    pub fn new_anot_number_term(n: f64, anots: Vec<Term>) -> Term {
+        Term::NTerm(NTerm { value: n }, Annotations::from(anots))
     }
 
     pub fn new_number_term(n: f64) -> Term {
@@ -102,6 +123,10 @@ impl Term {
 
     pub fn new_list_term(t: Vec<Term>) -> Term {
         Term::LTerm(LTerm { terms: t }, Annotations::empty())
+    }
+
+    pub fn new_anot_tuple_term(t: Vec<Term>, anots: Vec<Term>) -> Term {
+        Term::TTerm(TTerm { terms: t }, Annotations::from(anots))
     }
 
     pub fn new_tuple_term(t: Vec<Term>) -> Term {
@@ -127,7 +152,7 @@ impl Term {
             Term::LTerm(_, a) => a.elems.push(annotation),
         }
     }
-    
+
     pub fn clear_annotations(&mut self) {
         match self {
             Term::RTerm(_, a) => a.elems.clear(),
@@ -143,7 +168,7 @@ impl Term {
 #[derive(Debug, Clone, Hash)]
 pub struct RTerm {
     pub constructor: String,
-    pub terms: Vec<Term>
+    pub terms: Vec<Term>,
 }
 
 impl PartialEq for RTerm {
@@ -155,7 +180,7 @@ impl PartialEq for RTerm {
 // String Term
 #[derive(Debug, Clone, Hash)]
 pub struct STerm {
-    pub value: String
+    pub value: String,
 }
 
 impl PartialEq for STerm {
@@ -167,7 +192,7 @@ impl PartialEq for STerm {
 // Numerical Term
 #[derive(Debug, Clone)]
 pub struct NTerm {
-    pub value: f64
+    pub value: f64,
 }
 
 impl PartialEq for NTerm {
@@ -199,7 +224,7 @@ impl Hash for NTerm {
 // Tuple Term
 #[derive(Debug, Clone, Hash)]
 pub struct TTerm {
-    pub terms: Vec<Term>
+    pub terms: Vec<Term>,
 }
 
 impl PartialEq for TTerm {
@@ -209,13 +234,15 @@ impl PartialEq for TTerm {
 }
 
 impl TTerm {
-    pub fn new() -> TTerm { TTerm { terms: Vec::new() } }
+    pub fn new() -> TTerm {
+        TTerm { terms: Vec::new() }
+    }
 }
 
 // List Term
 #[derive(Debug, Clone, Hash)]
 pub struct LTerm {
-    pub terms: Vec<Term>
+    pub terms: Vec<Term>,
 }
 
 impl PartialEq for LTerm {
@@ -226,7 +253,12 @@ impl PartialEq for LTerm {
 
 impl LTerm {
     pub fn tail(&self) -> Term {
-        Term::LTerm(LTerm { terms: self.terms[1..].iter().cloned().collect::<Vec<_>>() }, Annotations::empty())
+        Term::LTerm(
+            LTerm {
+                terms: self.terms[1..].iter().cloned().collect::<Vec<_>>(),
+            },
+            Annotations::empty(),
+        )
     }
 
     pub fn head(&self) -> Term {
@@ -237,30 +269,30 @@ impl LTerm {
 // Helpers
 
 fn ws<'a, O, E: ParseError<&'a str>, F: Parser<&'a str, O, E>>(f: F) -> impl Parser<&'a str, O, E> {
-  delimited(multispace0, f, multispace0)
+    delimited(multispace0, f, multispace0)
 }
 
-fn u16_hex(input: &str) -> IResult<&str, u16> {
+fn u16_hex(input: &str) -> ParseResult<u16> {
     map_res(take(4usize), |s| u16::from_str_radix(s, 16))(input)
 }
 
-fn unicode_escape(input: &str) -> IResult<&str, char> {
+fn unicode_escape(input: &str) -> ParseResult<char> {
     map_opt(
         alt((
-        // Not a surrogate
-        map(verify(u16_hex, |cp| !(0xD800..0xE000).contains(cp)), |cp| {
-            cp as u32
-        }),
-        // See https://en.wikipedia.org/wiki/UTF-16#Code_points_from_U+010000_to_U+10FFFF for details
-        map(
-            verify(
-                separated_pair(u16_hex, tag("\\u"), u16_hex),
-                |(high, low)| (0xD800..0xDC00).contains(high) && (0xDC00..0xE000).contains(low),
-            ),
-            |(high, low)| {
-                let high_ten = (high as u32) - 0xD800;
-                let low_ten = (low as u32) - 0xDC00;
-                (high_ten << 10) + low_ten + 0x10000
+            // Not a surrogate
+            map(verify(u16_hex, |cp| !(0xD800..0xE000).contains(cp)), |cp| {
+                cp as u32
+            }),
+            // See https://en.wikipedia.org/wiki/UTF-16#Code_points_from_U+010000_to_U+10FFFF for details
+            map(
+                verify(
+                    separated_pair(u16_hex, tag("\\u"), u16_hex),
+                    |(high, low)| (0xD800..0xDC00).contains(high) && (0xDC00..0xE000).contains(low),
+                ),
+                |(high, low)| {
+                    let high_ten = (high as u32) - 0xD800;
+                    let low_ten = (low as u32) - 0xDC00;
+                    (high_ten << 10) + low_ten + 0x10000
                 },
             ),
         )),
@@ -269,20 +301,20 @@ fn unicode_escape(input: &str) -> IResult<&str, char> {
     )(input)
 }
 
-fn character(input: &str) -> IResult<&str, char> {
+fn character(input: &str) -> ParseResult<char> {
     let (input, c) = none_of("\"")(input)?;
     if c == '\\' {
         alt((
             map_res(anychar, |c| {
-            Ok(match c {
-                '"' | '\\' | '/' => c,
-                'b' => '\x08',
-                'f' => '\x0C',
-                'n' => '\n',
-                'r' => '\r',
-                't' => '\t',
-                _ => return Err(()),
-            })
+                Ok(match c {
+                    '"' | '\\' | '/' => c,
+                    'b' => '\x08',
+                    'f' => '\x0C',
+                    'n' => '\n',
+                    'r' => '\r',
+                    't' => '\t',
+                    _ => return Err(()),
+                })
             }),
             preceded(char('u'), unicode_escape),
         ))(input)
@@ -291,56 +323,83 @@ fn character(input: &str) -> IResult<&str, char> {
     }
 }
 
-// Parsers
-
-pub fn parse_number(input: &str) -> IResult<&str, Term> {
-    let (input, res) = double(input)?;
-    Ok((input, Term::new_number_term(res)))    
-}
-
-pub fn parse_string(input: &str) -> IResult<&str, Term> {
-    let (input, t) = delimited(
+pub fn string_literal(i: &str) -> ParseResult<String> {
+    delimited(
         char('"'),
         fold_many0(character, String::new(), |mut string, c| {
-          string.push(c);
-          string
+            string.push(c);
+            string
         }),
         char('"'),
+    )(i)
+}
+
+type ParseResult<'a, O> = IResult<&'a str, O, VerboseError<&'a str>>;
+
+// Parsers
+
+pub fn parse_number(input: &str) -> ParseResult<Term> {
+    let (input, res) = double(input)?;
+    Ok((input, Term::new_number_term(res)))
+}
+
+pub fn parse_string(i: &str) -> ParseResult<Term> {
+    map(string_literal, |s| Term::new_string_term(&s))(i)
+}
+
+pub fn parse_tuple(i: &str) -> ParseResult<Term> {
+    map(
+        delimited(
+            char('('),
+            ws(separated_list0(ws(char(',')), parse_any_term)),
+            char(')'),
+        ),
+        |ts| Term::new_tuple_term(ts),
+    )(i)
+}
+
+pub fn parse_list(input: &str) -> ParseResult<Term> {
+    let (input, r) = delimited(
+        char('['),
+        ws(separated_list0(ws(tag(",")), parse_any_term)),
+        char(']'),
     )(input)?;
-    Ok((input, Term::new_string_term(&t)))
-}
-
-pub fn parse_tuple(i: &str) -> IResult<&str, Term> {
-    map(delimited(char('('), ws(separated_list0(ws(char(',')), parse_any_term)), char(')')),
-        |ts| Term::new_tuple_term(ts))(i)
-}
-
-pub fn parse_list(input: &str) -> IResult<&str, Term> {
-    let (input, r) = delimited(char('['), ws(separated_list0(ws(tag(",")), parse_any_term)), char(']'))(input)?;
-    let (input, maybe_annots) = opt(delimited(char('{'), ws(separated_list0(ws(tag(",")), parse_any_term)), char('}')))(input)?;
+    let (input, maybe_annots) = opt(delimited(
+        char('{'),
+        ws(separated_list0(ws(tag(",")), parse_any_term)),
+        char('}'),
+    ))(input)?;
     match maybe_annots {
         Some(annots) => Ok((input, Term::new_anot_list_term(r, annots))),
-        None         => Ok((input, Term::new_list_term(r))),
+        None => Ok((input, Term::new_list_term(r))),
     }
 }
 
-pub fn parse_term(input: &str) -> IResult<&str, Term> {
+pub fn parse_term(input: &str) -> ParseResult<Term> {
     let (input, con) = take_while1(char::is_alphanumeric)(input)?;
-    let (input, r) = delimited(char('('), ws(separated_list0(ws(tag(",")), parse_any_term)), char(')'))(input)?;
-    let (input, maybe_annots) = opt(delimited(char('{'), ws(separated_list0(ws(tag(",")), parse_any_term)), char('}')))(input)?;
+    let (input, r) = delimited(
+        char('('),
+        ws(separated_list0(ws(tag(",")), parse_any_term)),
+        char(')'),
+    )(input)?;
+    let (input, maybe_annots) = opt(delimited(
+        char('{'),
+        ws(separated_list0(ws(tag(",")), parse_any_term)),
+        char('}'),
+    ))(input)?;
     match maybe_annots {
         Some(annots) => Ok((input, Term::new_anot_rec_term(&con.to_string(), r, annots))),
-        None         => Ok((input, Term::new_rec_term(&con.to_string(), r))),
+        None => Ok((input, Term::new_rec_term(&con.to_string(), r))),
     }
 }
 
-pub fn parse_any_term(i: &str) -> IResult<&str, Term> {
+pub fn parse_any_term(i: &str) -> ParseResult<Term> {
     alt((
         parse_term,
         parse_list,
         parse_string,
         parse_number,
-        parse_tuple
+        parse_tuple,
     ))(i)
 }
 
@@ -349,7 +408,7 @@ pub fn parse_term_from_string(i: &str) -> Result<Term, String> {
 
     match r {
         Ok((_, t)) => Ok(t),
-        _ => Err(String::from("Parse error"))
+        _ => Err(String::from("Parse error")),
     }
 }
 
@@ -398,8 +457,12 @@ impl fmt::Display for Term {
 impl fmt::Display for RTerm {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.terms.len() {
-            0 => { write!(f, "{}()", self.constructor) },
-            1 => { write!(f, "{}({})", self.constructor, self.terms[0]) },
+            0 => {
+                write!(f, "{}()", self.constructor)
+            }
+            1 => {
+                write!(f, "{}({})", self.constructor, self.terms[0])
+            }
             _ => {
                 write!(f, "{}(\n  ", self.constructor)?;
                 let mut out = String::new();
@@ -413,7 +476,11 @@ impl fmt::Display for RTerm {
                     }
                 }
                 out += ")";
-                write!(indented(f).with_format(Format::Uniform{ indentation: "  " }), "{}", out)
+                write!(
+                    indented(f).with_format(Format::Uniform { indentation: "  " }),
+                    "{}",
+                    out
+                )
             }
         }
     }
@@ -465,10 +532,12 @@ impl fmt::Display for LTerm {
                     }
                 }
                 out += "]";
-                write!(indented(f).with_format(Format::Uniform{ indentation: "  " }), "{}", out)
+                write!(
+                    indented(f).with_format(Format::Uniform { indentation: "  " }),
+                    "{}",
+                    out
+                )
             }
         }
     }
 }
-
-

@@ -1,6 +1,6 @@
 use aterms as at;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct File {
     pub functions: Vec<Function>,
     pub filename: Option<String>,

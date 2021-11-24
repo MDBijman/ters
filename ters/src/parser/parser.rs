@@ -8,7 +8,7 @@ use nom::{
     combinator::{cut, map, map_res, opt, verify},
     error::ErrorKind,
     error::ParseError,
-    error::{Error, VerboseError},
+    error::VerboseError,
     multi::{many0, separated_list0},
     number::complete::double,
     sequence::{delimited, pair, preceded, terminated, tuple},
@@ -20,6 +20,7 @@ fn ws<'a, O, E: ParseError<&'a str>, F: Parser<&'a str, O, E>>(f: F) -> impl Par
     delimited(multispace0, f, multispace0)
 }
 
+#[allow(dead_code)]
 fn dbg_in<'a, O, E: ParseError<&'a str>, F: Parser<&'a str, O, E>>(
     mut f: F,
 ) -> impl Parser<&'a str, O, E>
@@ -33,6 +34,7 @@ where
     }
 }
 
+#[allow(dead_code)]
 fn dbg_out<'a, O, E: ParseError<&'a str>, F: Parser<&'a str, O, E>>(
     mut f: F,
 ) -> impl Parser<&'a str, O, E>
@@ -174,7 +176,7 @@ fn parse_string_match(input: &str) -> ParseResult<Match> {
             )),
             _ => panic!("Unexpected result from parsing string"),
         },
-        Err(e) => {
+        Err(_) => {
             return Err(nom::Err::Error(VerboseError::from_error_kind(
                 input,
                 ErrorKind::Char,
@@ -191,7 +193,7 @@ fn parse_number_match(input: &str) -> ParseResult<Match> {
             }
             _ => panic!("Unexpected result from parsing number"),
         },
-        Err(e) => {
+        Err(_) => {
             return Err(nom::Err::Error(VerboseError::from_error_kind(
                 input,
                 ErrorKind::Char,
@@ -343,7 +345,7 @@ fn parse_string(input: &str) -> ParseResult<Expr> {
             aterms::Term::STerm(s, _) => Ok((input, Expr::Text(Text { value: s.value }))),
             _ => panic!("Unexpected term type from parse_string"),
         },
-        Err(e) => {
+        Err(_) => {
             return Err(nom::Err::Error(VerboseError::from_error_kind(
                 input,
                 ErrorKind::Char,
