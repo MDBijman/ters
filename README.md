@@ -1,7 +1,7 @@
-# TeRS - Term Rewrite System
+# Ters - Term Rewrite System
 
-This repository contains the TeRS and ATerms projects.
+This repository contains the Ters and ATerms projects.
 
 ATerms contains the definition of the annotated term datastructure and a parser.
 
-TeRS contains the implementation of the term rewrite language that can be used to manipulate aterms.
+Ters contains the implementation of the term rewrite language that can be used to manipulate aterms.
