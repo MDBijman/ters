@@ -166,9 +166,9 @@ fn parse_variable_match(input: &str) -> ParseResult<Match> {
 }
 
 fn parse_string_match(input: &str) -> ParseResult<Match> {
-    match aterms::parse_string(input) {
+    match aterms::parse_string_term(input) {
         Ok((input, res)) => match res {
-            aterms::Term::STerm(aterms::STerm { value: n }, _) => Ok((
+            aterms::Term::STerm(aterms::STerm { value: n, .. }) => Ok((
                 input,
                 Match::StringMatcher(StringMatcher {
                     value: n.to_string(),
@@ -186,9 +186,9 @@ fn parse_string_match(input: &str) -> ParseResult<Match> {
 }
 
 fn parse_number_match(input: &str) -> ParseResult<Match> {
-    match aterms::parse_number(input) {
+    match aterms::parse_number_term(input) {
         Ok((input, res)) => match res {
-            aterms::Term::NTerm(aterms::NTerm { value: n }, _) => {
+            aterms::Term::NTerm(aterms::NTerm { value: n, .. }) => {
                 Ok((input, Match::NumberMatcher(NumberMatcher { value: n })))
             }
             _ => panic!("Unexpected result from parsing number"),
@@ -340,9 +340,9 @@ fn parse_value(input: &str) -> ParseResult<Expr> {
 }
 
 fn parse_string(input: &str) -> ParseResult<Expr> {
-    match aterms::parse_string(input) {
+    match aterms::parse_string_term(input) {
         Ok((input, res)) => match res {
-            aterms::Term::STerm(s, _) => Ok((input, Expr::Text(Text { value: s.value }))),
+            aterms::Term::STerm(s) => Ok((input, Expr::Text(Text { value: s.value }))),
             _ => panic!("Unexpected term type from parse_string"),
         },
         Err(_) => {

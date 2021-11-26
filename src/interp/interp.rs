@@ -1,10 +1,11 @@
 use crate::parser::parser::parse_rw_string;
 use crate::parser::rwfile::*;
 use aterms as at;
+use std::collections::HashMap;
 use std::fmt;
-use std::{collections::HashMap};
 
 #[cfg(feature = "bench-instrumentation")]
+#[derive(Clone)]
 pub struct BenchmarkMetrics {
     counters: HashMap<String, u64>,
 }
@@ -134,7 +135,7 @@ fn check_and_bind_match(m: &Match, t: &at::Term) -> Option<Context> {
     match (m, t) {
         (Match::VariadicElementMatcher(_), _) => panic!("Cannot match variadic element matcher"),
         (Match::AnyMatcher, _) => Some(Context::new()),
-        (Match::TermMatcher(tm), at::Term::RTerm(rec_term, term_annot)) => {
+        (Match::TermMatcher(tm), at::Term::RTerm(rec_term)) => {
             let mut bindings: Context = Context::new();
 
             let head_binding = check_and_bind_match(
@@ -174,7 +175,7 @@ fn check_and_bind_match(m: &Match, t: &at::Term) -> Option<Context> {
                 return None;
             }
 
-            match check_and_bind_annotations(&tm.annotations, term_annot.clone()) {
+            match check_and_bind_annotations(&tm.annotations, rec_term.annotations.clone()) {
                 None => return None,
                 Some(b) => bindings.merge(b),
             }
@@ -192,21 +193,21 @@ fn check_and_bind_match(m: &Match, t: &at::Term) -> Option<Context> {
 
             Some(bindings)
         }
-        (Match::StringMatcher(sm), at::Term::STerm(s, _)) => {
+        (Match::StringMatcher(sm), at::Term::STerm(s)) => {
             if s.value == sm.value {
                 Some(Context::new())
             } else {
                 None
             }
         }
-        (Match::NumberMatcher(nm), at::Term::NTerm(n, _)) => {
+        (Match::NumberMatcher(nm), at::Term::NTerm(n)) => {
             if n.value == nm.value {
                 Some(Context::new())
             } else {
                 None
             }
         }
-        (Match::ListMatcher(lm), at::Term::LTerm(lt, _)) => {
+        (Match::ListMatcher(lm), at::Term::LTerm(lt)) => {
             let mut bindings: Context = Context::new();
             match &lm.head {
                 None => {
@@ -252,7 +253,7 @@ fn check_and_bind_match(m: &Match, t: &at::Term) -> Option<Context> {
                 }
             }
         }
-        (Match::TupleMatcher(tm), at::Term::TTerm(tt, annots)) => {
+        (Match::TupleMatcher(tm), at::Term::TTerm(tt)) => {
             // 1 to 1 matching elements with matcher
             let mut bindings: Context = Context::new();
             let mut i = 0;
@@ -277,7 +278,7 @@ fn check_and_bind_match(m: &Match, t: &at::Term) -> Option<Context> {
                 i += 1;
             }
 
-            match check_and_bind_annotations(&tm.annotations, annots.clone()) {
+            match check_and_bind_annotations(&tm.annotations, tt.annotations.clone()) {
                 None => return None,
                 Some(b) => bindings.merge(b),
             }
@@ -317,11 +318,7 @@ impl Rewriter {
     pub fn rewrite_with_rule(&mut self, t: at::Term, f: &str) -> at::Term {
         let result = self.interp_function(
             &Context::new(),
-            &FRef::from(
-                &String::from(f),
-                &Vec::new(),
-                FunctionReferenceType::Force,
-            ),
+            &FRef::from(&String::from(f), &Vec::new(), FunctionReferenceType::Force),
             t,
         );
 
@@ -332,7 +329,7 @@ impl Rewriter {
             use std::path::Path;
             let rw_path_str = self.rules.filename.clone().unwrap();
             let rw_path = Path::new(&rw_path_str);
-            let bench_path = Path::new("./snippets/bench/")
+            let bench_path = Path::new("./tests/benchmarks/")
                 .join(rw_path.file_name().unwrap())
                 .with_extension("json");
             let mut o = fs::File::create(bench_path).unwrap();
@@ -428,64 +425,60 @@ impl Rewriter {
 
         let meta = &function.meta;
         match (function.name.as_str(), t) {
-            ("add", at::Term::TTerm(rt, _)) if rt.terms.len() == 2 => {
+            ("add", at::Term::TTerm(rt)) if rt.terms.len() == 2 => {
                 match (rt.terms.get(0).unwrap(), rt.terms.get(1).unwrap()) {
-                    (at::Term::NTerm(n1, _), at::Term::NTerm(n2, _)) => Some(
-                        Rewriter::term_to_expr(&at::Term::new_number_term(n1.value + n2.value)),
-                    ),
+                    (at::Term::NTerm(n1), at::Term::NTerm(n2)) => Some(Rewriter::term_to_expr(
+                        &at::Term::new_number_term(n1.value + n2.value),
+                    )),
                     _ => None,
                 }
             }
-            ("mul", at::Term::TTerm(rt, _)) if rt.terms.len() == 2 => {
+            ("mul", at::Term::TTerm(rt)) if rt.terms.len() == 2 => {
                 match (rt.terms.get(0).unwrap(), rt.terms.get(1).unwrap()) {
-                    (at::Term::NTerm(n1, _), at::Term::NTerm(n2, _)) => Some(
-                        Rewriter::term_to_expr(&at::Term::new_number_term(n1.value * n2.value)),
-                    ),
+                    (at::Term::NTerm(n1), at::Term::NTerm(n2)) => Some(Rewriter::term_to_expr(
+                        &at::Term::new_number_term(n1.value * n2.value),
+                    )),
                     _ => None,
                 }
             }
-            ("div", at::Term::TTerm(rt, _)) if rt.terms.len() == 2 => {
+            ("div", at::Term::TTerm(rt)) if rt.terms.len() == 2 => {
                 match (rt.terms.get(0).unwrap(), rt.terms.get(1).unwrap()) {
-                    (at::Term::NTerm(n1, _), at::Term::NTerm(n2, _)) => Some(
-                        Rewriter::term_to_expr(&at::Term::new_number_term(n1.value / n2.value)),
-                    ),
+                    (at::Term::NTerm(n1), at::Term::NTerm(n2)) => Some(Rewriter::term_to_expr(
+                        &at::Term::new_number_term(n1.value / n2.value),
+                    )),
                     _ => None,
                 }
             }
-            ("min", at::Term::TTerm(rt, _)) if rt.terms.len() == 2 => {
+            ("min", at::Term::TTerm(rt)) if rt.terms.len() == 2 => {
                 match (rt.terms.get(0).unwrap(), rt.terms.get(1).unwrap()) {
-                    (at::Term::NTerm(n1, _), at::Term::NTerm(n2, _)) => {
-                        Some(Rewriter::term_to_expr(&at::Term::new_number_term(
-                            if n1.value < n2.value {
-                                n1.value
-                            } else {
-                                n2.value
-                            },
-                        )))
-                    }
+                    (at::Term::NTerm(n1), at::Term::NTerm(n2)) => Some(Rewriter::term_to_expr(
+                        &at::Term::new_number_term(if n1.value < n2.value {
+                            n1.value
+                        } else {
+                            n2.value
+                        }),
+                    )),
                     _ => None,
                 }
             }
-            ("max", at::Term::TTerm(rt, _)) if rt.terms.len() == 2 => {
+            ("max", at::Term::TTerm(rt)) if rt.terms.len() == 2 => {
                 match (rt.terms.get(0).unwrap(), rt.terms.get(1).unwrap()) {
-                    (at::Term::NTerm(n1, _), at::Term::NTerm(n2, _)) => {
-                        Some(Rewriter::term_to_expr(&at::Term::new_number_term(
-                            if n1.value < n2.value {
-                                n2.value
-                            } else {
-                                n1.value
-                            },
-                        )))
-                    }
+                    (at::Term::NTerm(n1), at::Term::NTerm(n2)) => Some(Rewriter::term_to_expr(
+                        &at::Term::new_number_term(if n1.value < n2.value {
+                            n2.value
+                        } else {
+                            n1.value
+                        }),
+                    )),
                     _ => None,
                 }
             }
-            ("subterms", at::Term::RTerm(rt, _)) if meta.len() == 0 => Some(
-                Rewriter::term_to_expr(&at::Term::new_list_term(rt.terms.clone())),
-            ),
-            ("with_subterms", at::Term::TTerm(rt, _)) if meta.len() == 0 => {
+            ("subterms", at::Term::RTerm(rt)) if meta.len() == 0 => Some(Rewriter::term_to_expr(
+                &at::Term::new_list_term(rt.terms.clone()),
+            )),
+            ("with_subterms", at::Term::TTerm(rt)) if meta.len() == 0 => {
                 match (&rt.terms[0], &rt.terms[1]) {
-                    (at::Term::RTerm(constr, _), at::Term::LTerm(elems, _)) => {
+                    (at::Term::RTerm(constr), at::Term::LTerm(elems)) => {
                         Some(Rewriter::term_to_expr(&at::Term::new_rec_term(
                             constr.constructor.as_str(),
                             elems.terms.clone(),
@@ -503,38 +496,35 @@ impl Rewriter {
                 Some(Rewriter::term_to_expr(&t))
             }
             ("fail", _) => None,
-            ("gen_name", at::Term::STerm(st, _)) => {
+            ("gen_name", at::Term::STerm(st)) => {
                 let id = self.gen_newname_count(&st.value);
                 let sterm = at::Term::new_string_term(format!("{}_{}", st.value, id).as_str());
 
                 Some(Rewriter::term_to_expr(&sterm))
             }
-            ("gen_num", at::Term::STerm(st, _)) => {
+            ("gen_num", at::Term::STerm(st)) => {
                 let id = self.gen_newname_count(&st.value);
                 let sterm = at::Term::new_number_term(id as f64);
 
                 Some(Rewriter::term_to_expr(&sterm))
             }
-            ("get_num", at::Term::STerm(st, _)) => {
+            ("get_num", at::Term::STerm(st)) => {
                 let id = self.get_newname_count(&st.value);
                 let sterm = at::Term::new_number_term(id as f64);
 
                 Some(Rewriter::term_to_expr(&sterm))
             }
-            ("reset_num", at::Term::STerm(st, a)) => {
+            ("reset_num", at::Term::STerm(st)) => {
                 self.reset_newname_count(&st.value);
 
-                Some(Rewriter::term_to_expr(&at::Term::STerm(
-                    st.clone(),
-                    a.clone(),
-                )))
+                Some(Rewriter::term_to_expr(&at::Term::STerm(st.clone())))
             }
-            ("concat_str", at::Term::LTerm(lt, _)) => {
+            ("concat_str", at::Term::LTerm(lt)) => {
                 let mut out: String = String::new();
 
                 for item in lt.terms.iter() {
                     match item {
-                        at::Term::STerm(s, _) => out.push_str(s.value.as_str()),
+                        at::Term::STerm(s) => out.push_str(s.value.as_str()),
                         _ => return None,
                     }
                 }
@@ -544,7 +534,7 @@ impl Rewriter {
             ("to_str", t) => Some(Rewriter::term_to_expr(&at::Term::new_string_term(
                 &format!("{}", t),
             ))),
-            ("eq", at::Term::TTerm(tt, _)) if tt.terms.len() == 2 => {
+            ("eq", at::Term::TTerm(tt)) if tt.terms.len() == 2 => {
                 let lhs = &tt.terms[0];
                 let rhs = &tt.terms[1];
 
@@ -599,7 +589,7 @@ impl Rewriter {
                                 .expect(format!("Cannot resolve reference {}", l.name).as_str());
                             match list {
                                 // Reference must resolve to list term
-                                at::Term::LTerm(l, _) => {
+                                at::Term::LTerm(l) => {
                                     for elem in &l.terms {
                                         res.push(elem.clone());
                                     }
@@ -690,12 +680,12 @@ impl Rewriter {
                     }),
                     t,
                 )? {
-                    Some(Expr::SimpleTerm(at::Term::TTerm(ts, _))) => ts.terms,
+                    Some(Expr::SimpleTerm(at::Term::TTerm(ts))) => ts.terms,
                     _ => return Ok(None),
                 };
 
                 match head.unwrap() {
-                    Expr::SimpleTerm(at::Term::STerm(s, _)) => Some(Rewriter::term_to_expr(
+                    Expr::SimpleTerm(at::Term::STerm(s)) => Some(Rewriter::term_to_expr(
                         &at::Term::new_rec_term(&s.value, terms),
                     )),
                     _ => None,
@@ -736,7 +726,7 @@ impl Rewriter {
                                 .expect(format!("Cannot resolve reference {}", n.name).as_str());
                             match list {
                                 // Reference must resolve to list term
-                                at::Term::LTerm(l, _) => {
+                                at::Term::LTerm(l) => {
                                     for elem in &l.terms {
                                         inner_term.add_annotation(elem.clone());
                                     }
@@ -762,7 +752,10 @@ impl Rewriter {
             ))),
             Expr::List(l) => {
                 self.bench_increment_count("fn:reduce:list");
-                let mut res = at::LTerm { terms: Vec::new() };
+                let mut res = at::LTerm {
+                    terms: Vec::new(),
+                    annotations: at::Annotations::empty(),
+                };
                 for e in &l.values {
                     let r = match self.reduce(c, &e, t)? {
                         Some(t) => t.to_term().unwrap(),
@@ -771,10 +764,7 @@ impl Rewriter {
 
                     res.terms.push(r);
                 }
-                Some(Rewriter::term_to_expr(&at::Term::LTerm(
-                    res,
-                    at::Annotations::empty(),
-                )))
+                Some(Rewriter::term_to_expr(&at::Term::LTerm(res)))
             }
             Expr::Let(l) => {
                 self.bench_increment_count("fn:reduce:let");
@@ -801,11 +791,11 @@ impl Rewriter {
 
                 match self.reduce(c, &*l.tail, t)? {
                     Some(t) => match t.to_term() {
-                        Some(at::Term::LTerm(tail_res, a)) => {
+                        Some(at::Term::LTerm(tail_res)) => {
                             let mut res = vec![head_res];
                             res.extend(tail_res.terms.into_iter());
                             Some(Rewriter::term_to_expr(&at::Term::new_anot_list_term(
-                                res, a.elems,
+                                res, tail_res.annotations.elems,
                             )))
                         }
                         _ => None,
