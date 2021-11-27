@@ -1,6 +1,9 @@
 extern crate nom;
 use crate::parser::rwfile::*;
-use aterms;
+use aterms::extensible::*;
+use aterms::shared::*;
+
+use nom::sequence::separated_pair;
 use nom::{
     branch::alt,
     bytes::complete::{is_not, tag, take_till1, take_while},
@@ -15,39 +18,6 @@ use nom::{
     IResult, Parser,
 };
 use std::fs;
-
-fn ws<'a, O, E: ParseError<&'a str>, F: Parser<&'a str, O, E>>(f: F) -> impl Parser<&'a str, O, E> {
-    delimited(multispace0, f, multispace0)
-}
-
-#[allow(dead_code)]
-fn dbg_in<'a, O, E: ParseError<&'a str>, F: Parser<&'a str, O, E>>(
-    mut f: F,
-) -> impl Parser<&'a str, O, E>
-where
-    O: std::fmt::Debug,
-    E: std::fmt::Debug,
-{
-    move |input: &'a str| {
-        println!("[dbg] {}", input);
-        f.parse(input)
-    }
-}
-
-#[allow(dead_code)]
-fn dbg_out<'a, O, E: ParseError<&'a str>, F: Parser<&'a str, O, E>>(
-    mut f: F,
-) -> impl Parser<&'a str, O, E>
-where
-    O: std::fmt::Debug,
-    E: std::fmt::Debug,
-{
-    move |input: &'a str| {
-        let r = f.parse(input);
-        println!("[dbg] {:?}", r);
-        r
-    }
-}
 
 type ParseResult<'a, O> = IResult<&'a str, O, VerboseError<&'a str>>;
 
@@ -119,34 +89,10 @@ fn parse_term_name_match(i: &str) -> ParseResult<Match> {
         map(parse_name, |n| {
             Match::StringMatcher(StringMatcher {
                 value: n.to_string(),
+                annotations: vec![],
             })
         }),
     ))(i)
-}
-
-fn parse_term_match(i: &str) -> ParseResult<Match> {
-    map(
-        tuple((
-            parse_term_name_match,
-            delimited(
-                ws(char('(')),
-                cut(ws(separated_list0(ws(tag(",")), parse_match))),
-                ws(char(')')),
-            ),
-            cut(opt(delimited(
-                ws(char('{')),
-                ws(separated_list0(ws(tag(",")), parse_match)),
-                char('}'),
-            ))),
-        )),
-        |(name, args_match, annot_matches)| {
-            Match::TermMatcher(TermMatcher {
-                constructor: Box::from(name),
-                terms: args_match,
-                annotations: annot_matches.unwrap_or(Vec::new()),
-            })
-        },
-    )(i)
 }
 
 fn parse_variable_match(input: &str) -> ParseResult<Match> {
@@ -165,43 +111,6 @@ fn parse_variable_match(input: &str) -> ParseResult<Match> {
     ))
 }
 
-fn parse_string_match(input: &str) -> ParseResult<Match> {
-    match aterms::parse_string_term(input) {
-        Ok((input, res)) => match res {
-            aterms::Term::STerm(aterms::STerm { value: n, .. }) => Ok((
-                input,
-                Match::StringMatcher(StringMatcher {
-                    value: n.to_string(),
-                }),
-            )),
-            _ => panic!("Unexpected result from parsing string"),
-        },
-        Err(_) => {
-            return Err(nom::Err::Error(VerboseError::from_error_kind(
-                input,
-                ErrorKind::Char,
-            )))
-        }
-    }
-}
-
-fn parse_number_match(input: &str) -> ParseResult<Match> {
-    match aterms::parse_number_term(input) {
-        Ok((input, res)) => match res {
-            aterms::Term::NTerm(aterms::NTerm { value: n, .. }) => {
-                Ok((input, Match::NumberMatcher(NumberMatcher { value: n })))
-            }
-            _ => panic!("Unexpected result from parsing number"),
-        },
-        Err(_) => {
-            return Err(nom::Err::Error(VerboseError::from_error_kind(
-                input,
-                ErrorKind::Char,
-            )))
-        }
-    }
-}
-
 fn parse_variadic_elem_match(i: &str) -> ParseResult<Match> {
     map(preceded(tag(".."), cut(parse_name)), |n| {
         Match::VariadicElementMatcher(VariadicElementMatcher {
@@ -210,96 +119,53 @@ fn parse_variadic_elem_match(i: &str) -> ParseResult<Match> {
     })(i)
 }
 
-fn parse_tuple_match(input: &str) -> ParseResult<Match> {
-    verify(
-        map_res(
-            pair(
-                delimited(
-                    ws(char('(')),
-                    cut(ws(separated_list0(ws(tag(",")), parse_match))),
-                    ws(char(')')),
-                ),
-                cut(opt(delimited(
-                    ws(char('{')),
-                    ws(separated_list0(ws(tag(",")), parse_match)),
-                    char('}'),
-                ))),
-            ),
-            |(r, a)| -> Result<Match, String> {
-                Ok(Match::TupleMatcher(TupleMatcher {
-                    elems: r,
-                    annotations: a.unwrap_or(vec![]),
-                }))
-            },
+fn parse_list_match(i: &str) -> ParseResult<Match> {
+    map(
+        delimited(
+            ws(char('[')),
+            separated_pair(parse_match, ws(char('|')), parse_match),
+            ws(char(']')),
         ),
-        |m: &Match| match m {
-            Match::TupleMatcher(tm) => {
-                if tm.elems.len() == 0 {
-                    return true;
-                }
-
-                let l = tm.elems.len() - 1;
-                for i in 0..l {
-                    match &tm.elems[i] {
-                        Match::VariadicElementMatcher(_) => {
-                            panic!("Variadic element matcher must be at the end")
-                        }
-                        _ => {}
-                    }
-                }
-                true
-            }
-            _ => false,
+        |(head, tail)| {
+            Match::ListConsMatcher(ListConsMatcher {
+                head: Box::from(head),
+                tail: Box::from(tail),
+                annotations: vec![],
+            })
         },
-    )(input)
-}
-
-fn parse_list_match(input: &str) -> ParseResult<Match> {
-    let (input, _) = ws(tag("[")).parse(input)?;
-    let (input, opt_head_match) = opt(parse_match)(input)?;
-    match opt_head_match {
-        Some(head_match) => {
-            let (mut input, sep) = opt(ws(tag("|"))).parse(input)?;
-
-            let tail_match = match sep {
-                None => None,
-                Some(_) => {
-                    let (_input, tail_match) = parse_match(input)?;
-                    input = _input;
-                    Some(Box::from(tail_match))
-                }
-            };
-
-            let (input, _) = ws(tag("]")).parse(input)?;
-
-            let res = Match::ListMatcher(ListMatcher {
-                head: Some(Box::from(head_match)),
-                tail: tail_match,
-            });
-
-            Ok((input, res))
-        }
-        _ => {
-            let (input, _) = ws(tag("]")).parse(input)?;
-
-            let res = Match::ListMatcher(ListMatcher {
-                head: None,
-                tail: None,
-            });
-
-            Ok((input, res))
-        }
-    }
+    )(i)
 }
 
 fn parse_match(i: &str) -> ParseResult<Match> {
     alt((
+        parse_recursive_term(parse_term_name_match, parse_match, Match::from_recursive),
+        parse_list_term(parse_match, Match::from_list),
         parse_list_match,
-        parse_tuple_match,
-        parse_term_match,
+        verify(
+            parse_tuple_term(parse_match, Match::from_tuple),
+            |m| match m {
+                Match::TupleMatcher(tm) => {
+                    if tm.elems.len() == 0 {
+                        return true;
+                    }
+
+                    let l = tm.elems.len() - 1;
+                    for i in 0..l {
+                        match &tm.elems[i] {
+                            Match::VariadicElementMatcher(_) => {
+                                panic!("Variadic element matcher must be at the end")
+                            }
+                            _ => {}
+                        }
+                    }
+                    true
+                }
+                _ => false,
+            },
+        ),
+        parse_string_term(parse_match, Match::from_string),
+        parse_number_term(parse_match, Match::from_number),
         parse_variable_match,
-        parse_string_match,
-        parse_number_match,
         parse_variadic_elem_match,
     ))(i)
 }
@@ -333,25 +199,14 @@ fn parse_meta_args(input: &str) -> ParseResult<Vec<Expr>> {
     Ok((input, meta.unwrap_or(Vec::new())))
 }
 
-fn parse_value(input: &str) -> ParseResult<Expr> {
-    map_res(ws(double), |n: f64| -> Result<Expr, String> {
-        Ok(Expr::Number(Number { value: n }))
-    })(input)
+fn parse_value(i: &str) -> ParseResult<Expr> {
+    map(ws(double), |n: f64| Expr::Number(Number { value: n }))(i)
 }
 
-fn parse_string(input: &str) -> ParseResult<Expr> {
-    match aterms::parse_string_term(input) {
-        Ok((input, res)) => match res {
-            aterms::Term::STerm(s) => Ok((input, Expr::Text(Text { value: s.value }))),
-            _ => panic!("Unexpected term type from parse_string"),
-        },
-        Err(_) => {
-            return Err(nom::Err::Error(VerboseError::from_error_kind(
-                input,
-                ErrorKind::Char,
-            )))
-        }
-    }
+fn parse_string(i: &str) -> ParseResult<Expr> {
+    map(aterms::shared::parse_string_literal, |value| {
+        Expr::Text(Text { value })
+    })(i)
 }
 
 enum AnotType {
@@ -437,40 +292,26 @@ fn parse_tuple(i: &str) -> ParseResult<Expr> {
             delimited(ws(char('(')), parse_expr, ws(char(')'))),
             |expr| -> Expr { expr },
         ),
-        map(
-            delimited(
-                ws(char('(')),
-                terminated(ws(separated_list0(ws(tag(",")), parse_expr)), opt(tag(","))),
-                cut(ws(char(')'))),
-            ),
-            |r: Vec<Expr>| -> Expr { Expr::Tuple(Tuple { values: r }) },
-        ),
+        parse_tuple_term_no_annotations(parse_expr, |r| Expr::Tuple(Tuple { values: r })),
     ))(i)
 }
 
 fn parse_list(input: &str) -> ParseResult<Expr> {
     alt((
         // [ a, b, c ]
-        map_res(
-            delimited(
-                ws(char('[')),
-                ws(separated_list0(ws(tag(",")), parse_expr)),
-                ws(char(']')),
-            ),
-            |r: Vec<Expr>| -> Result<Expr, String> { Ok(Expr::List(List { values: r })) },
-        ),
+        parse_list_term_no_annotations(parse_expr, |r| Expr::List(List { values: r })),
         // [ h | t ]
-        map_res(
+        map(
             delimited(
                 ws(char('[')),
                 tuple((parse_expr, ws(char('|')), cut(parse_expr))),
                 cut(ws(char(']'))),
             ),
-            |t: (Expr, char, Expr)| -> Result<Expr, String> {
-                Ok(Expr::ListCons(ListCons {
+            |t: (Expr, char, Expr)| {
+                Expr::ListCons(ListCons {
                     head: Box::from(t.0),
                     tail: Box::from(t.2),
-                }))
+                })
             },
         ),
     ))(input)
@@ -485,11 +326,13 @@ fn parse_term(input: &str) -> ParseResult<Expr> {
         parse_unroll_variadic,
         parse_list,
     ))(input)?;
+
     let (input, anot) = opt(delimited(
         ws(char('{')),
         cut(ws(separated_list0(ws(tag(",")), parse_expr))),
         cut(char('}')),
     ))(input)?;
+
     match anot {
         Some(annotation) => Ok((
             input,
@@ -629,7 +472,9 @@ pub fn parse_rw_string(input: &str) -> Result<File, String> {
             })
         }
         Err(nom::Err::Error(e)) => panic!("Something went wrong: {}", e),
-        Err(nom::Err::Failure(e)) => panic!("Parse failure:\n{}", e),
+        Err(nom::Err::Failure(e)) => {
+            panic!("Parse failure:\n{}", nom::error::convert_error(input, e))
+        }
         Err(nom::Err::Incomplete(_)) => panic!("Parser reported incomplete input - aborting"),
     }
 }

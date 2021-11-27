@@ -44,30 +44,30 @@ pub enum Expr {
     Annotation(Annotation),
     AddAnnotation(Annotation),
     Let(Let),
-    SimpleTerm(at::Term),
+    SimpleTerm(at::base::Term),
     This,
 }
 
 impl Expr {
-    pub fn to_term(&self) -> Option<at::Term> {
+    pub fn to_term(&self) -> Option<at::base::Term> {
         match &self {
             Expr::SimpleTerm(t) => Some(t.clone()),
             Expr::Tuple(t) => {
-                let mut sub_t: Vec<at::Term> = vec![];
+                let mut sub_t: Vec<at::base::Term> = vec![];
                 for elem in &t.values {
                     sub_t.push(elem.to_term()?);
                 }
-                Some(at::Term::new_tuple_term(sub_t))
+                Some(at::base::Term::new_tuple_term(sub_t))
             }
             Expr::List(t) => {
-                let mut sub_t: Vec<at::Term> = vec![];
+                let mut sub_t: Vec<at::base::Term> = vec![];
                 for elem in &t.values {
                     sub_t.push(elem.to_term()?);
                 }
-                Some(at::Term::new_list_term(sub_t))
+                Some(at::base::Term::new_list_term(sub_t))
             }
-            Expr::Number(t) => Some(at::Term::new_number_term(t.value)),
-            Expr::Text(t) => Some(at::Term::new_string_term(&t.value)),
+            Expr::Number(t) => Some(at::base::Term::new_number_term(t.value)),
+            Expr::Text(t) => Some(at::base::Term::new_string_term(&t.value)),
             _ => None,
         }
     }
@@ -162,13 +162,60 @@ pub struct Let {
 #[derive(Debug, Clone)]
 pub enum Match {
     TermMatcher(TermMatcher),
-    VariableMatcher(VariableMatcher),
     StringMatcher(StringMatcher),
     NumberMatcher(NumberMatcher),
-    ListMatcher(ListMatcher),
     TupleMatcher(TupleMatcher),
+    VariableMatcher(VariableMatcher),
+    ListMatcher(ListMatcher),
+    ListConsMatcher(ListConsMatcher),
     VariadicElementMatcher(VariadicElementMatcher),
     AnyMatcher,
+}
+
+impl Match {
+    pub fn from_tuple(elems: Vec<Self>, annots: Vec<Self>) -> Self {
+        Self::TupleMatcher(TupleMatcher {
+            elems,
+            annotations: annots,
+        })
+    }
+
+    pub fn from_list(elems: Vec<Self>, annots: Vec<Self>) -> Self {
+        Self::ListMatcher(ListMatcher {
+            elems,
+            annotations: annots
+        })
+    }
+
+    pub fn from_list_cons(head: Self, tail: Self, annots: Vec<Self>) -> Self {
+        Self::ListConsMatcher(ListConsMatcher {
+            head: Box::from(head),
+            tail: Box::from(tail),
+            annotations: annots
+        })
+    }
+
+    pub fn from_recursive(con: Self, elems: Vec<Self>, annots: Vec<Self>) -> Self {
+        Self::TermMatcher(TermMatcher {
+            constructor: Box::from(con),
+            terms: elems,
+            annotations: annots,
+        })
+    }
+
+    pub fn from_string(con: String, annots: Vec<Self>) -> Self {
+        Self::StringMatcher(StringMatcher {
+            value: con,
+            annotations: annots,
+        })
+    }
+
+    pub fn from_number(val: f64, annots: Vec<Self>) -> Self {
+        Self::NumberMatcher(NumberMatcher {
+            value: val,
+            annotations: annots,
+        })
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -187,17 +234,26 @@ pub struct VariableMatcher {
 #[derive(Debug, Clone)]
 pub struct StringMatcher {
     pub value: String,
+    pub annotations: Vec<Match>,
 }
 
 #[derive(Debug, Clone)]
 pub struct NumberMatcher {
     pub value: f64,
+    pub annotations: Vec<Match>,
 }
 
 #[derive(Debug, Clone)]
 pub struct ListMatcher {
-    pub head: Option<Box<Match>>,
-    pub tail: Option<Box<Match>>,
+    pub elems: Vec<Match>,
+    pub annotations: Vec<Match>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ListConsMatcher {
+    pub head: Box<Match>,
+    pub tail: Box<Match>,
+    pub annotations: Vec<Match>,
 }
 
 #[derive(Debug, Clone)]
