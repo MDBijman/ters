@@ -344,15 +344,15 @@ impl Rewriter {
             Err(f) => {
                 use std::fmt::Write;
                 let mut error = String::new();
-                write!(error, "{}", f.error_message).unwrap();
+                write!(error, "{}\n", f.error_message).unwrap();
 
                 let mut iter = f.callstack.iter();
                 for call in iter.by_ref().take(5) {
-                    write!(error, "in {}", call).unwrap();
+                    write!(error, "in {}\n", call).unwrap();
                 }
 
                 if iter.len() > 0 {
-                    write!(error, "... [omitted {} more]", iter.len()).unwrap();
+                    write!(error, "... [omitted {} more]\n", iter.len()).unwrap();
                 }
 
                 if self.rules.filename.is_some() {
