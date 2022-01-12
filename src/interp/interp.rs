@@ -304,11 +304,11 @@ impl Rewriter {
         Rewriter::new(File::merge(prelude, f))
     }
 
-    pub fn rewrite(&mut self, t: at::base::Term) -> at::base::Term {
+    pub fn rewrite(&mut self, t: at::base::Term) -> Result<at::base::Term, String> {
         self.rewrite_with_rule(t, "main")
     }
 
-    pub fn rewrite_with_rule(&mut self, t: at::base::Term, f: &str) -> at::base::Term {
+    pub fn rewrite_with_rule(&mut self, t: at::base::Term, f: &str) -> Result<at::base::Term, String> {
         let result = self.interp_function(
             &Context::new(),
             &FRef::from(&String::from(f), &Vec::new(), FunctionReferenceType::Force),
@@ -368,9 +368,9 @@ impl Rewriter {
                 write!(error, "{}\n", f.failure_context).unwrap();
                 write!(error, "Current term:\n").unwrap();
                 write!(error, "{}\n", f.term).unwrap();
-                panic!("{}", error);
+                Err(error)
             }
-            Ok(t) => t.unwrap().to_term().unwrap(),
+            Ok(t) => Ok(t.unwrap().to_term().unwrap()),
         }
     }
 

@@ -8,8 +8,8 @@ bottomup[.f]: (..ts){..a}         -> new_ts   := .map[.bottomup[.f]] ts  in .f (
 bottomup[.f]: l -> .is_list l > new_elems := .map[.bottomup[.f]] l   in .f new_elems;
 bottomup[.f]: t -> .f t;
 
-env_bottomup[.f]: (e,  ?con(..sub))   -> (new_env, new_sub)   := .env_map[.env_bottomup[.f]] (e, sub) in .f (new_env, ?con(..new_sub));
-env_bottomup[.f]: (e, (..ts))         -> (new_env, new_ts)    := .env_map[.env_bottomup[.f]] (e, ts)  in .f (new_env, (..new_ts,));
+env_bottomup[.f]: (e,  ?con(..sub){..a}) -> (new_env, new_sub)   := .env_map[.env_bottomup[.f]] (e, sub) in .f (new_env, ?con(..new_sub){..a});
+env_bottomup[.f]: (e, (..ts){..a})       -> (new_env, new_ts)    := .env_map[.env_bottomup[.f]] (e, ts)  in .f (new_env, (..new_ts,){..a});
 env_bottomup[.f]: (e, l) -> .is_list l > (new_env, new_elems) := .env_map[.env_bottomup[.f]] (e, l)   in .f (new_env, new_elems);
 env_bottomup[.f]: (e, t) -> .f (e, t); 
 
@@ -28,6 +28,10 @@ map_acc[.f]: ([h|t], acc) -> .map_acc[.f] (t, [.f h | acc]);
 # Retain only items on which transformation succeeds
 retain_all[.f]: [] -> [];
 retain_all[.f]: [h|t] -> .f h ? [h|.retain_all[.f] t] : .retain_all[.f] t;
+
+# Retain items recursively on which transformation succeeds
+gather[.f]: t -> .env_bottomup[.gather_impl[.f]] ([], t);
+gather_impl[.f]: (e, t) -> (r := .f t in ([r|e], t)) + (e, t);
 
 try[.f]: n -> .f n + n;
 
@@ -52,7 +56,8 @@ intersperse_acc[v]: ([h|t], acc) -> .intersperse_acc[v] (t, [h|[v|acc]]);
 # [t] -> [(num, t)]
 enumerate: [] -> [];
 enumerate: [h|t] -> !enumerate_impl[0] [h|t];
-enumerate_impl[idx]: [h|t] -> new_idx := !add (idx, 1) in [(idx, h) | !enumerate[new_idx] t];
+enumerate_impl[idx]: [h|t] -> new_idx := !add (idx, 1) in [(idx, h) | !enumerate_impl[new_idx] t];
+enumerate_impl[idx]: [] -> [];
 
 # Flattens lists
 # Empty list is flat
@@ -146,6 +151,9 @@ put[key, value]: [h|t] ->
 get[needle]: [] -> .fail;
 # Recursive case: check if head is needle, then return value, otherwise recurse 
 get[needle]: [(k,v)|t] -> .eq (needle, k) ? v : .get[needle] t;
+
+find[needle]: [] -> .fail;
+find[needle]: [h|t] -> .eq (needle, h) ? h : .find[needle] t;
 
 # Term variant checking rules 
 is_list: [t|h] -> .id;

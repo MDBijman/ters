@@ -7,7 +7,8 @@ fn run_e2e_test(rw_string: &str, in_term: &str, out_term: &str) {
     let input = parse_term_from_string(in_term).unwrap();
     let result = rw.rewrite(input);
     let expected = parse_term_from_string(out_term).unwrap();
-    assert_eq!(result, expected);
+    assert!(result.is_ok());
+    assert_eq!(result.unwrap(), expected);
 }
 
 #[test]
