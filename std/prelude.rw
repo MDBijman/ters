@@ -30,7 +30,7 @@ retain_all[.f]: [] -> [];
 retain_all[.f]: [h|t] -> .f h ? [h|.retain_all[.f] t] : .retain_all[.f] t;
 
 # Retain items recursively on which transformation succeeds
-gather[.f]: t -> .env_bottomup[.gather_impl[.f]] ([], t);
+gather[.f]: t -> .env_bottomup[.gather_impl[.f]] ([], t) > .fst;
 gather_impl[.f]: (e, t) -> (r := .f t in ([r|e], t)) + (e, t);
 
 try[.f]: n -> .f n + n;
