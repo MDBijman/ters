@@ -73,6 +73,7 @@ flatten_some: [h|t] -> [h|.flatten_some t];
 flatten: [] -> [];
 # When head is list, concatenate with tail
 flatten: [[h|t1]|t2] -> .concat ([h|t1], .flatten t2);
+flatten: [[]|t] -> .flatten t;
 
 # Second element of pair
 second: (_, b) -> b;
@@ -102,6 +103,12 @@ split_last_acc: (acc, [h|t]) -> .split_last_acc ([h|acc], t);
 len: l -> .is_list > .len_acc (l, 0);
 len_acc: ([h|t], n) -> .len_acc (t, .add (n, 1));
 len_acc: ([], n) -> n;
+
+# Access list element by index
+list_get[idx]: l -> .is_list > .list_get_inner (l, idx);
+list_get_inner: ([h|t], 0) -> h;
+list_get_inner: ([], n) -> .gt (n, 0) > .fail "out of bounds";
+list_get_inner: ([h|t], n) -> .list_get_inner (t, .sub (n, 1));
 
 # Repeats a value n times in the form of a list
 repeat[v]: n -> [];
@@ -148,9 +155,9 @@ put[key, value]: [h|t] ->
     [(key, value)|new_list];
 
 # Base case: empty list means not found
-get[needle]: [] -> .fail;
+map_get[needle]: [] -> .fail;
 # Recursive case: check if head is needle, then return value, otherwise recurse 
-get[needle]: [(k,v)|t] -> .eq (needle, k) ? v : .get[needle] t;
+map_get[needle]: [(k,v)|t] -> .eq (needle, k) ? v : .map_get[needle] t;
 
 find[needle]: [] -> .fail;
 find[needle]: [h|t] -> .eq (needle, h) ? h : .find[needle] t;

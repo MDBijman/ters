@@ -393,6 +393,7 @@ impl Rewriter {
     fn is_builtin(name: &str) -> bool {
         [
             "add",
+            "sub",
             "mul",
             "div",
             "min",
@@ -428,6 +429,16 @@ impl Rewriter {
                     (at::base::Term::NTerm(n1), at::base::Term::NTerm(n2)) => {
                         Some(Rewriter::term_to_expr(
                             &at::base::Term::new_number_term(n1.value + n2.value),
+                        ))
+                    }
+                    _ => None,
+                }
+            }
+            ("sub", at::base::Term::TTerm(rt)) if rt.terms.len() == 2 => {
+                match (rt.terms.get(0).unwrap(), rt.terms.get(1).unwrap()) {
+                    (at::base::Term::NTerm(n1), at::base::Term::NTerm(n2)) => {
+                        Some(Rewriter::term_to_expr(
+                            &at::base::Term::new_number_term(n1.value - n2.value),
                         ))
                     }
                     _ => None,
