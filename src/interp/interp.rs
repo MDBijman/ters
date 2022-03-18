@@ -398,6 +398,8 @@ impl Rewriter {
             "div",
             "min",
             "max",
+            "eq",
+            "gt",
             "subterms",
             "with_subterms",
             "debug",
@@ -407,7 +409,6 @@ impl Rewriter {
             "gen_num",
             "get_num",
             "reset_num",
-            "eq",
             "concat_str",
             "to_str",
         ]
@@ -566,6 +567,16 @@ impl Rewriter {
                     Some(Rewriter::term_to_expr(&at::base::Term::new_tuple_term(
                         vec![lhs.clone(), rhs.clone()],
                     )))
+                } else {
+                    None
+                }
+            }
+            ("gt", at::base::Term::TTerm(tt)) if tt.terms.len() == 2 => {
+                let lhs = tt.terms[0].as_nterm()?;
+                let rhs = tt.terms[1].as_nterm()?;
+
+                if lhs.value > rhs.value {
+                    Some(Rewriter::term_to_expr(&t.clone()))
                 } else {
                     None
                 }
