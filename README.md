@@ -1,7 +1,7 @@
 # Ters - Term Rewrite System
 
-This repository contains the Ters and ATerms projects.
+This repository contains implementation of the Ters DSL.
 
-ATerms contains the definition of the annotated term datastructure and a parser.
+It is used to transform [ATerms](https://github.com/MDBijman/aterms).
 
-Ters contains the implementation of the term rewrite language that can be used to manipulate aterms.
+ATerms are commonly used to represent programs, and as Ters can be used to implement program transformations.
